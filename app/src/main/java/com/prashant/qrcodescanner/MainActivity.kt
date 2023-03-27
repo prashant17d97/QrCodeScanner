@@ -1,17 +1,18 @@
 package com.prashant.qrcodescanner
 
 import android.Manifest.permission.CAMERA
+import android.content.ContentValues.TAG
 import android.content.pm.PackageManager
-import android.util.Size
+import android.graphics.Camera
 import android.os.Bundle
 import android.util.Log
+import android.util.Rational
+import android.util.Size
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.AspectRatio.RATIO_4_3
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.impl.ImageOutputConfig.OPTION_MAX_RESOLUTION
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.border
@@ -30,6 +31,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.green
 import com.prashant.qrcodescanner.ui.theme.QrCodeScannerTheme
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -147,31 +149,42 @@ class MainActivity : ComponentActivity() {
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
 
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
-        val preview = androidx.camera.core.Preview.Builder().setTargetAspectRatio(RATIO_4_3).build()
+        val preview = androidx.camera.core.Preview.Builder().setTargetResolution(Size(1080, 1080)) .build()
+        val cameraProvider = cameraProviderFuture.get()
         val previewView = remember { PreviewView(context) }
         val cameraSelector = CameraSelector.Builder()
             .requireLensFacing(lensFacing)
             .build()
 
-
+        /*
+        *  private fun startCamera() {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            val preview = androidx.camera.core.Preview.Builder()
+                .setTargetResolution(Size(1080, 1080)) // Set preview size here
+                .build()
+            val cameraSelector = CameraSelector.Builder()
+                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+                .build()
+            val camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+            preview.setSurfaceProvider(previewView.createSurfaceProvider(camera.cameraInfo))
+        }, ContextCompat.getMainExecutor(context))
+    }*/
         // 2
         LaunchedEffect(lensFacing) {
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
             cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-
-                // Preview
-                val preview1 = androidx.camera.core.Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
 
                 // Image analyzer
                 val imageAnalyzer = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     //.setBackpressureStrategy(ImageAnalysis.STRATEGY_BLOCK_PRODUCER)
                     //.setImageQueueDepth(1)
+                    .setTargetResolution(Size(720, 720))
+
                     .build().also {
                         it.setAnalyzer(
                             cameraExecutor,
@@ -195,14 +208,16 @@ class MainActivity : ComponentActivity() {
 
                     // Bind use cases to camera
                     cameraProvider.bindToLifecycle(
-                        lifecycleOwner, cameraSelector, preview1, imageAnalyzer
+                        lifecycleOwner, cameraSelector, preview, imageAnalyzer
                     )
 
                 } catch (exc: Exception) {
                     exc.printStackTrace()
                 }
             }, ContextCompat.getMainExecutor(context))
-            preview.setSurfaceProvider(previewView.surfaceProvider)
+            preview.setSurfaceProvider(previewView.createSurfaceProvider((cameraProvider.bindToLifecycle(
+                lifecycleOwner, cameraSelector, preview, imageAnalyzer
+            )).cameraInfo))
         }
 
         // 3
@@ -217,11 +232,14 @@ class MainActivity : ComponentActivity() {
                     shape = RoundedCornerShape(20.dp)
                 ),
                 update = {
-                    it.scaleType=PreviewView.ScaleType.FIT_CENTER
+                    it.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                    it.scaleType = PreviewView.ScaleType.FILL_CENTER
                 })
         }
 
     }
+
+
 
     @Preview(showBackground = true)
     @Composable
