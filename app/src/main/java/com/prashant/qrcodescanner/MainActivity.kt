@@ -99,7 +99,7 @@ class MainActivity : ComponentActivity() {
                 },
                 previewView = {
                     if (shouldShowCamera.value) {
-                        startCamera(cameraPreview = it, context = context, flash = flash) { code ->
+                        startCamera(cameraPreview = it, context = context) { code ->
                             value = code
                         }
                     }
@@ -143,7 +143,6 @@ class MainActivity : ComponentActivity() {
     private fun startCamera(
         cameraPreview: PreviewView,
         context: Context,
-        flash: Boolean,
         code: (String) -> Unit
     ) {
 
