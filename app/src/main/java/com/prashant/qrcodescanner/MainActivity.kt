@@ -13,7 +13,9 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme
@@ -24,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -76,7 +79,10 @@ class MainActivity : ComponentActivity() {
         var value by remember {
             mutableStateOf("Prashant")
         }
-        val context= LocalContext.current
+        var flash by remember {
+            mutableStateOf(false)
+        }
+        val context = LocalContext.current
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -86,16 +92,21 @@ class MainActivity : ComponentActivity() {
         ) {
             Text(text = value)
             Spacer(modifier = Modifier.height(50.dp))
-            MyScreen(previewView = {
-                if (shouldShowCamera.value) {
-                    startCamera(it, context = context){code->
-                        value=code
+            MyScreen(
+                flashBool = flash,
+                onFlashChange = {
+                    flash = it
+                },
+                previewView = {
+                    if (shouldShowCamera.value) {
+                        startCamera(cameraPreview = it, context = context, flash = flash) { code ->
+                            value = code
+                        }
                     }
+                    requestCameraPermission()
+                    cameraExecutor = Executors.newSingleThreadExecutor()
                 }
-                requestCameraPermission()
-                cameraExecutor = Executors.newSingleThreadExecutor()
-            })
-
+            )
 
         }
     }
@@ -129,12 +140,15 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private fun startCamera(
+        cameraPreview: PreviewView,
+        context: Context,
+        flash: Boolean,
+        code: (String) -> Unit
+    ) {
 
-
-    private fun startCamera(cameraPreview: PreviewView, context: Context, code:(String)->Unit) {
         cameraExecutor = Executors.newSingleThreadExecutor()
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
 
@@ -177,9 +191,14 @@ class MainActivity : ComponentActivity() {
             }
         }, ContextCompat.getMainExecutor(context))
     }
+
     @Composable
-    fun MyScreen(previewView: (PreviewView)->Unit) {
-        val parentView=
+    fun MyScreen(
+        flashBool: Boolean,
+        onFlashChange: (Boolean) -> Unit,
+        previewView: (PreviewView) -> Unit,
+    ) {
+
         Box(
             modifier = Modifier
                 .size(300.dp)
@@ -189,13 +208,25 @@ class MainActivity : ComponentActivity() {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
-                    LayoutInflater.from(context).inflate(R.layout.my_layout,  null)
+                    LayoutInflater.from(context).inflate(R.layout.my_layout, null)
                 },
                 update = { view ->
                     previewView(view.findViewById(R.id.preview_view))
                 }
             )
+
         }
+        Image(
+            painter = painterResource(id = R.drawable.ic_flash_on.takeIf { flashBool }
+                ?: R.drawable.ic_flash_off),
+            contentDescription = "",
+            modifier = Modifier
+                .size(50.dp)
+                .padding(10.dp)
+                .clickable {
+                    onFlashChange(!flashBool)
+                }
+        )
     }
 
     @Preview(showBackground = true)
