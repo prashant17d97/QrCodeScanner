@@ -1,13 +1,11 @@
 package com.prashant.qrcodescanner
 
 import android.Manifest.permission.CAMERA
-import android.content.ContentValues.TAG
+import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Camera
 import android.os.Bundle
 import android.util.Log
-import android.util.Rational
-import android.util.Size
+import android.view.LayoutInflater
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,12 +24,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.green
 import com.prashant.qrcodescanner.ui.theme.QrCodeScannerTheme
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -80,6 +76,7 @@ class MainActivity : ComponentActivity() {
         var value by remember {
             mutableStateOf("Prashant")
         }
+        val context= LocalContext.current
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -89,23 +86,16 @@ class MainActivity : ComponentActivity() {
         ) {
             Text(text = value)
             Spacer(modifier = Modifier.height(50.dp))
-            Box(
-                modifier = Modifier
-                    .size(350.dp)
-                    .border(width = 4.dp, color = Color.Red, shape = RoundedCornerShape(20.dp)),
-                contentAlignment = Alignment.Center
-            ) {
+            MyScreen(previewView = {
                 if (shouldShowCamera.value) {
-                    CameraView(
-                        modifier = Modifier
-                            .size(350.dp)
-                            .padding(5.dp),
-                        onValueChane = { value = it }
-                    )
+                    startCamera(it, context = context){code->
+                        value=code
+                    }
                 }
                 requestCameraPermission()
                 cameraExecutor = Executors.newSingleThreadExecutor()
-            }
+            })
+
 
         }
     }
@@ -139,107 +129,74 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    @Composable
-    fun CameraView(
-        modifier: Modifier = Modifier,
-        onValueChane: (String) -> Unit
-    ) {
-        // 1
-        val lensFacing = CameraSelector.LENS_FACING_BACK
-        val context = LocalContext.current
-        val lifecycleOwner = LocalLifecycleOwner.current
 
+
+    private fun startCamera(cameraPreview: PreviewView, context: Context, code:(String)->Unit) {
+        cameraExecutor = Executors.newSingleThreadExecutor()
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
-        val preview = androidx.camera.core.Preview.Builder().setTargetResolution(Size(1080, 1080)) .build()
-        val cameraProvider = cameraProviderFuture.get()
-        val previewView = remember { PreviewView(context) }
-        val cameraSelector = CameraSelector.Builder()
-            .requireLensFacing(lensFacing)
-            .build()
-
-        /*
-        *  private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
-            val preview = androidx.camera.core.Preview.Builder()
-                .setTargetResolution(Size(1080, 1080)) // Set preview size here
-                .build()
-            val cameraSelector = CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-                .build()
-            val camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
-            preview.setSurfaceProvider(previewView.createSurfaceProvider(camera.cameraInfo))
-        }, ContextCompat.getMainExecutor(context))
-    }*/
-        // 2
-        LaunchedEffect(lensFacing) {
 
-            cameraProviderFuture.addListener({
+            // Preview
+            val preview = androidx.camera.core.Preview.Builder().build().also {
+                it.setSurfaceProvider(cameraPreview.surfaceProvider)
+            }
 
-                // Image analyzer
-                val imageAnalyzer = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    //.setBackpressureStrategy(ImageAnalysis.STRATEGY_BLOCK_PRODUCER)
-                    //.setImageQueueDepth(1)
-                    .setTargetResolution(Size(720, 720))
+            // Image analyzer
+            val imageAnalyzer = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build().also {
+                    it.setAnalyzer(
+                        cameraExecutor,
+                        QrCodeAnalyzer(onBarCodeScannerSuccess = { data ->
+                            //it.clearAnalyzer()
+                            //cameraProvider.unbindAll()
+                            code(data)
 
-                    .build().also {
-                        it.setAnalyzer(
-                            cameraExecutor,
-                            QrCodeAnalyzer(onBarCodeScannerSuccess = { data ->
-                                //it.clearAnalyzer()
-                                //cameraProvider.unbindAll()
-                                Log.e("Scanner", "Scanner Success: Data -> $data")
-                                onValueChane(data.trim())
+                            Log.e("Scanner", "Scanner Success: Data -> $data")
 
-                            }, onBarCodeScannerFailed = { exception ->
-                                Log.e("Scanner", "Scanner Failed: ${exception.message}")
-
-                            }),
-                        )
-                    }
-
-                // Select back camera as a default
-                try {
-                    // Unbind use cases before rebinding
-                    cameraProvider.unbindAll()
-
-                    // Bind use cases to camera
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner, cameraSelector, preview, imageAnalyzer
+                        }, onBarCodeScannerFailed = { exception ->
+                            Log.e("Scanner", "Scanner Failed: ${exception.message}")
+                        }),
                     )
-
-                } catch (exc: Exception) {
-                    exc.printStackTrace()
                 }
-            }, ContextCompat.getMainExecutor(context))
-            preview.setSurfaceProvider(previewView.createSurfaceProvider((cameraProvider.bindToLifecycle(
-                lifecycleOwner, cameraSelector, preview, imageAnalyzer
-            )).cameraInfo))
-        }
 
-        // 3
-        Box(
-            modifier = modifier
-                .border(width = 0.dp, color = Color.Transparent, shape = RoundedCornerShape(20.dp))
-        ) {
-            AndroidView({ previewView }, modifier = modifier
-                .border(
-                    width = 0.dp,
-                    color = Color.Transparent,
-                    shape = RoundedCornerShape(20.dp)
-                ),
-                update = {
-                    it.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                    it.scaleType = PreviewView.ScaleType.FILL_CENTER
-                })
-        }
+            // Select back camera as a default
+            try {
+                // Unbind use cases before rebinding
+                cameraProvider.unbindAll()
 
+                // Bind use cases to camera
+                cameraProvider.bindToLifecycle(
+                    this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalyzer
+                )
+
+            } catch (exc: Exception) {
+                exc.printStackTrace()
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
-
-
+    @Composable
+    fun MyScreen(previewView: (PreviewView)->Unit) {
+        val parentView=
+        Box(
+            modifier = Modifier
+                .size(300.dp)
+                .border(width = 4.dp, color = Color.Red, shape = RoundedCornerShape(20.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    LayoutInflater.from(context).inflate(R.layout.my_layout,  null)
+                },
+                update = { view ->
+                    previewView(view.findViewById(R.id.preview_view))
+                }
+            )
+        }
+    }
 
     @Preview(showBackground = true)
     @Composable
